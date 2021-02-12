@@ -15,10 +15,12 @@ struct MyVec<T> {
 #[allow(dead_code)]
 impl<T> MyVec<T> {
     pub fn new() -> Self {
+        let cap = if std::mem::size_of::<T>() == 0 { !0 } else { 0 };
+        let data = std::mem::align_of::<T>() as *mut _;
         Self {
-            data: 0 as *mut T,
+            data,
             length: 0,
-            cap: 0,
+            cap,
             layout: alloc::Layout::new::<T>(),
             pd: PhantomData,
         }
@@ -119,9 +121,11 @@ impl<T> IndexMut<usize> for MyVec<T> {
 impl<T> Drop for MyVec<T> {
     fn drop(&mut self) {
         while let Some(_) = self.pop() {}
-        if self.cap > 0 {
-            unsafe {
-                alloc::dealloc(self.data as *mut _, self.layout);
+        if std::mem::size_of::<T>() != 0 {
+            if self.cap > 0 {
+                unsafe {
+                    alloc::dealloc(self.data as *mut _, self.layout);
+                }
             }
         }
     }
@@ -219,6 +223,61 @@ fn vec_index_oob() {
 
     v[10] = 10;
     assert_eq!(10, v[0]);
+}
+
+#[test]
+fn zst_vec_index() {
+    let mut v = MyVec::<()>::new();
+    assert_eq!(!0, v.cap);
+    assert_eq!(0, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(1, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(2, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(3, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(4, v.length);
+
+    assert_eq!((), v[0]);
+    assert_eq!((), v[1]);
+    assert_eq!((), v[2]);
+    assert_eq!((), v[3]);
+
+    v[0] = ();
+    assert_eq!((), v[0]);
+}
+
+#[test]
+#[should_panic]
+fn zst_vec_index_oob() {
+    let mut v = MyVec::<()>::new();
+    assert_eq!(!0, v.cap);
+    assert_eq!(0, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(1, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(2, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(3, v.length);
+    v.push(());
+    assert_eq!(!0, v.cap);
+    assert_eq!(4, v.length);
+
+    assert_eq!((), v[0]);
+    assert_eq!((), v[1]);
+    assert_eq!((), v[2]);
+    assert_eq!((), v[3]);
+
+    v[10] = ();
+    assert_eq!((), v[0]);
 }
 
 #[test]
